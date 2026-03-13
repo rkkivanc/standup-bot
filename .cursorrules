@@ -1,0 +1,60 @@
+## Project overview
+- **Stack**: Go backend (`backend`), Next.js 16 + React 19 + Tailwind CSS 4 frontend (`frontend`), PostgreSQL via Docker Compose.
+- **Entry points**:
+  - **Backend**: Go module `workshop-backend` in `backend` (HTTP API, talks to Postgres).
+  - **Frontend**: Next.js App Router under `frontend/app` (`layout.tsx`, `page.tsx`).
+  - **Infra**: `docker-compose.yml` orchestrates `db`, `backend`, and `frontend` services.
+
+## Directory & file conventions
+- **Root**:
+  - **`docker-compose.yml`**: Source of truth for service names, ports, and env vars (e.g. `DATABASE_URL`, `NEXT_PUBLIC_API_URL`). Keep these in sync with code.
+- **Backend (`backend`)**:
+  - Assume a standard Go HTTP API layout (handlers, services, repositories) as files are added.
+  - Prefer small, cohesive packages over a single giant `main.go`.
+  - Model DB access around the Postgres URL `postgres://myuser:mypassword@db:5432/mydatabase?sslmode=disable` from `docker-compose.yml`.
+- **Frontend (`frontend`)**:
+  - Use the **App Router** (`app/` directory), TypeScript, and modern React patterns.
+  - Export a single default component per route file (`page.tsx`).
+  - Use `globals.css` and Tailwind for styling; avoid ad‑hoc inline styles unless necessary.
+
+## Frontend rules (Next.js 16, React 19, Tailwind 4)
+- **Language & types**:
+  - Prefer TypeScript everywhere in `frontend` (including new components and utilities).
+  - Enable strict typing and narrow `any` usage; add types/interfaces for API responses.
+- **Components & hooks**:
+  - Use functional components and React hooks; avoid legacy patterns (class components, `getInitialProps`).
+  - Extract reusable logic into custom hooks and colocate them near the feature that uses them when practical.
+- **Styling**:
+  - Use Tailwind utility classes as the primary styling mechanism.
+  - Keep global styles in `app/globals.css` minimal and generic; feature‑specific styling should stay close to components.
+- **API calls**:
+  - Use `process.env.NEXT_PUBLIC_API_URL` (configured in `docker-compose.yml`) as the base URL for backend calls.
+  - Centralize HTTP helpers/fetchers rather than scattering raw `fetch` logic across components.
+
+## Backend rules (Go + PostgreSQL)
+- **Language & structure**:
+  - Use idiomatic Go (Go modules, `go fmt`, Go errors, context propagation).
+  - Split responsibilities into logical packages (e.g. `api/`, `service/`, `repository/`, `db/`), not one monolith file.
+- **Database & configuration**:
+  - Read DB connection info from `DATABASE_URL` (aligned with `docker-compose.yml`).
+  - Avoid hard‑coding credentials or connection strings; rely on env vars and configuration.
+- **HTTP API design**:
+  - Design clear, versioned JSON APIs (e.g. `/api/...`) appropriate for consumption by the Next.js frontend.
+  - Return structured error responses rather than plain strings; include HTTP status codes and machine‑readable error fields.
+
+## Docker & environment expectations
+- **Service assumptions**:
+  - Backend binds to port `8080`, frontend to port `3000`, Postgres to `5432`, as defined in `docker-compose.yml`.
+  - The frontend should talk to the backend via `NEXT_PUBLIC_API_URL` (default `http://localhost:8080`).
+- **Local development**:
+  - Favor running the stack with `docker-compose up --build` when testing end‑to‑end behavior.
+  - Keep code, ports, and environment variable names consistent with the compose file when making changes.
+
+## How the AI should behave in this repo
+- **General**:
+  - Prefer small, incremental changes aligned with this structure and stack.
+  - When in doubt, follow idiomatic Next.js/React/Tailwind and Go/Postgres best practices.
+- **Edits & explanations**:
+  - When generating or editing code, respect existing patterns in the same directory or file.
+  - Keep explanations concise and high‑level; avoid restating obvious code behavior unless asked.
+  - When adding new features, mention any necessary updates to Docker, environment variables, or cross‑service integration.

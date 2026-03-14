@@ -48,10 +48,10 @@ type sseToken struct {
 	Token string `json:"token"`
 }
 
-const defaultChatModel = "Llama-3.1-8B-Instruct-q4f32_1"
+const defaultChatModel = "gemma3:1b"
 
-// modelsResponse describes a minimal OpenAI-compatible /v1/models response.
-type modelsResponse struct {
+// chatModelsResponse describes a minimal OpenAI-compatible /v1/models response.
+type chatModelsResponse struct {
 	Data []struct {
 		ID string `json:"id"`
 	} `json:"data"`
@@ -91,12 +91,12 @@ func HandleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build the system message with the standup context embedded.
-	systemContent := buildSystemContent(reqBody.Context)
-
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 	}
+
+	// Build the system message with the standup context embedded.
+	systemContent := buildSystemContent(reqBody.Context)
 
 	// Resolve the concrete model ID from the LLM's /v1/models endpoint.
 	modelID := resolveChatModel(r.Context(), client, activeEndpoint)
@@ -235,7 +235,7 @@ func resolveChatModel(ctx context.Context, client *http.Client, baseEndpoint str
 		return defaultChatModel
 	}
 
-	var mr modelsResponse
+	var mr chatModelsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&mr); err != nil {
 		return defaultChatModel
 	}

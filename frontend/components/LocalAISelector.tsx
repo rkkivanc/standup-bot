@@ -155,6 +155,8 @@ export default function LocalAISelector({
                 }
                 if (typeof parsed?.message === "string") {
                   message = parsed.message;
+                } else if (typeof parsed?.progress === "string") {
+                  message = parsed.progress;
                 }
               } catch {
                 message = data;
@@ -174,8 +176,8 @@ export default function LocalAISelector({
       await fetchProviders();
       const modelName =
         recommendedProvider?.models?.[0] ??
-        "Llama-3.1-8B-Instruct-q4f32_1";
-      const providerName = recommendedProvider?.name ?? "mlc-llm";
+        "gemma3:1b";
+      const providerName = recommendedProvider?.name ?? "Ollama";
       onConnected(modelName, providerName);
       onClose();
       setDownload({ inProgress: false, progress: 100, message: "Ready" });
@@ -214,7 +216,7 @@ export default function LocalAISelector({
       const modelName =
         data?.active_model?.name ??
         provider.models?.[0] ??
-        "Llama-3.1-8B-Instruct-q4f32_1";
+        "gemma3:1b";
 
       onConnected(modelName, provider.name);
       onClose();
@@ -280,10 +282,10 @@ export default function LocalAISelector({
           <div className="mb-2 flex items-center justify-between">
             <div>
               <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-300">
-                Recommended Model (mlc-llm)
+                Recommended Model (Ollama)
               </h3>
               <p className="text-xs text-zinc-500">
-                Llama-3.1-8B-Instruct-q4f32_1 · ~4.5GB
+                gemma3:1b · ~1GB
               </p>
             </div>
             <button
@@ -322,7 +324,7 @@ export default function LocalAISelector({
             </div>
           ) : (
             <p className="text-[11px] text-zinc-500">
-              Streams and runs the recommended mlc-llm model locally on your
+              Downloads and runs the recommended Ollama model locally on your
               machine.
             </p>
           )}

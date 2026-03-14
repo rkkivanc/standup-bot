@@ -9,10 +9,7 @@ import (
 	"time"
 )
 
-const (
-	mlcEndpoint = "http://localhost:8080/v1/chat/completions"
-	mlcModel    = "Llama-3.1-8B-Instruct-q4f32_1"
-)
+const defaultStandupModel = "gemma3:1b"
 
 const standupSystemPrompt = "You are a developer standup assistant. Given a list of git commit messages, extract and return ONLY a JSON object with keys: yesterday, today, blockers. Each value is an array of concise strings. No explanation. No markdown."
 
@@ -71,6 +68,12 @@ func GenerateStandupSummary(ctx context.Context, commits []Commit) StandupSummar
 }
 
 func generateViaLLM(ctx context.Context, commits []Commit) (StandupSummary, bool) {
+	activeEndpoint := GetActiveLLMEndpoint()
+	if strings.TrimSpace(activeEndpoint) == "" {
+		// Fallback to Ollama host if no active endpoint set
+		activeEndpoint = OllamaHost()
+	}
+
 	messages := make([]string, 0, len(commits))
 	for _, c := range commits {
 		if strings.TrimSpace(c.Message) == "" {
@@ -91,7 +94,7 @@ func generateViaLLM(ctx context.Context, commits []Commit) (StandupSummary, bool
 	userContent := strings.Join(messages, "\n")
 
 	reqBody := chatRequest{
-		Model: mlcModel,
+		Model: defaultStandupModel,
 		Messages: []chatMessage{
 			{
 				Role:    "system",
@@ -113,7 +116,8 @@ func generateViaLLM(ctx context.Context, commits []Commit) (StandupSummary, bool
 		Timeout: 30 * time.Second,
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, mlcEndpoint, bytes.NewReader(data))
+	endpoint := strings.TrimRight(activeEndpoint, "/") + "/v1/chat/completions"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
 	if err != nil {
 		return StandupSummary{}, false
 	}

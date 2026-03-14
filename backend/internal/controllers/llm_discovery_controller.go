@@ -1,9 +1,13 @@
 package controllers
 
 import (
+	"bufio"
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"workshop-backend/internal/services"
@@ -68,11 +72,25 @@ func HandleLLMConnect(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ollamaPullRequest is the request body for Ollama's /api/pull endpoint.
+type ollamaPullRequest struct {
+	Name   string `json:"name"`
+	Stream bool   `json:"stream"`
+}
+
+// ollamaPullProgress represents a single progress line from Ollama's /api/pull.
+type ollamaPullProgress struct {
+	Status    string `json:"status"`
+	Digest    string `json:"digest,omitempty"`
+	Total     int64  `json:"total,omitempty"`
+	Completed int64  `json:"completed,omitempty"`
+}
+
+const defaultModel = "gemma3:1b"
+
 // HandleLLMDownload handles POST /api/llm/download.
-// For the workshop setup, the actual model download and serving are handled
-// by the separate mlc-llm service (Docker container). This endpoint streams
-// Server-Sent Events (SSE) to guide the user to start mlc-llm and then waits
-// until the provider is detected as running.
+// It pulls the recommended model (gemma3:1b) in Ollama via its /api/pull
+// endpoint and streams progress as SSE to the frontend.
 func HandleLLMDownload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -89,67 +107,145 @@ func HandleLLMDownload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	// In this workshop setup, the backend container does NOT include the
-	// mlc_llm binary. Instead, the mlc-llm Docker service is responsible for
-	// downloading and serving the model on port 11434.
-	writeSSEProgress(
-		w,
-		flusher,
-		"To download and run the recommended model, start the mlc-llm container (e.g. `docker compose --profile mlc up -d mlc-llm`). Waiting for mlc-llm on http://localhost:11434 ...",
-	)
+	ollamaEndpoint := services.OllamaHost()
 
-	// Poll provider discovery until mlc-llm is reported as running or the
-	// request context is cancelled / times out.
-	start := time.Now()
+	// Step 1: Wait for Ollama to be ready
+	writeSSEDownload(w, flusher, 5, "Waiting for Ollama to be ready...")
+
+	ready := waitForOllama(r, ollamaEndpoint, w, flusher)
+	if !ready {
+		return
+	}
+
+	writeSSEDownload(w, flusher, 10, "Ollama is ready. Pulling model "+defaultModel+"...")
+
+	// Step 2: Pull the model via Ollama /api/pull (streaming)
+	pullURL := strings.TrimRight(ollamaEndpoint, "/") + "/api/pull"
+	pullBody, _ := json.Marshal(ollamaPullRequest{
+		Name:   defaultModel,
+		Stream: true,
+	})
+
+	pullReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, pullURL, bytes.NewReader(pullBody))
+	if err != nil {
+		writeSSEDownload(w, flusher, 0, "Failed to create pull request: "+err.Error())
+		return
+	}
+	pullReq.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Minute}
+	pullResp, err := client.Do(pullReq)
+	if err != nil {
+		writeSSEDownload(w, flusher, 0, "Failed to connect to Ollama for pull: "+err.Error())
+		return
+	}
+	defer pullResp.Body.Close()
+
+	if pullResp.StatusCode != http.StatusOK {
+		writeSSEDownload(w, flusher, 0, fmt.Sprintf("Ollama pull returned status %d", pullResp.StatusCode))
+		return
+	}
+
+	// Read streaming NDJSON from Ollama and relay as SSE
+	scanner := bufio.NewScanner(pullResp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		select {
+		case <-r.Context().Done():
+			writeSSEDownload(w, flusher, 0, "Download cancelled.")
+			return
+		default:
+		}
+
+		line := scanner.Text()
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		var progress ollamaPullProgress
+		if err := json.Unmarshal([]byte(line), &progress); err != nil {
+			continue
+		}
+
+		pct := 10
+		msg := progress.Status
+		if progress.Total > 0 && progress.Completed > 0 {
+			pct = 10 + int(float64(progress.Completed)/float64(progress.Total)*85)
+			msg = fmt.Sprintf("%s (%.0f MB / %.0f MB)",
+				progress.Status,
+				float64(progress.Completed)/1024/1024,
+				float64(progress.Total)/1024/1024,
+			)
+		}
+
+		writeSSEDownload(w, flusher, pct, msg)
+	}
+
+	// Step 3: Done - set active endpoint and connect
+	writeSSEDownload(w, flusher, 98, "Model pulled successfully. Connecting...")
+
+	services.SetActiveLLMEndpoint(ollamaEndpoint)
+
+	writeSSEDownload(w, flusher, 100, "Ready")
+	time.Sleep(200 * time.Millisecond)
+}
+
+// waitForOllama polls Ollama until it responds or the request is cancelled.
+func waitForOllama(r *http.Request, ollamaEndpoint string, w http.ResponseWriter, flusher http.Flusher) bool {
+	client := &http.Client{Timeout: 2 * time.Second}
+	tagsURL := strings.TrimRight(ollamaEndpoint, "/") + "/api/tags"
+
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
-	for {
+	// Try immediately first
+	if probeOllama(r.Context(), client, tagsURL) {
+		return true
+	}
+
+	for i := 0; i < 30; i++ {
 		select {
 		case <-r.Context().Done():
-			writeSSEError(w, flusher, "Download was cancelled or timed out while waiting for mlc-llm.")
-			time.Sleep(200 * time.Millisecond)
-			return
+			writeSSEDownload(w, flusher, 0, "Cancelled while waiting for Ollama.")
+			return false
 		case <-ticker.C:
-			providers := services.DiscoverLLMProviders(r.Context())
-
-			var mlc *services.LLMProvider
-			for i := range providers {
-				if providers[i].Name == "mlc-llm" {
-					mlc = &providers[i]
-					break
-				}
+			if probeOllama(r.Context(), client, tagsURL) {
+				return true
 			}
-
-			if mlc == nil {
-				writeSSEProgress(
-					w,
-					flusher,
-					"Still waiting for mlc-llm to be discoverable...",
-				)
-				continue
-			}
-
-			if mlc.Status == "running" {
-				elapsed := time.Since(start).Round(time.Second)
-				writeSSEProgress(
-					w,
-					flusher,
-					fmt.Sprintf("mlc-llm is running (detected after %s).", elapsed),
-				)
-				// Short window to let clients receive the final events.
-				time.Sleep(200 * time.Millisecond)
-				return
-			}
-
-			elapsed := time.Since(start).Round(time.Second)
-			writeSSEProgress(
-				w,
-				flusher,
-				fmt.Sprintf("mlc-llm not running yet (waited %s)...", elapsed),
-			)
+			writeSSEDownload(w, flusher, 5, fmt.Sprintf("Waiting for Ollama... (%ds)", (i+1)*2))
 		}
 	}
+
+	writeSSEDownload(w, flusher, 0, "Timed out waiting for Ollama to start.")
+	return false
+}
+
+func probeOllama(ctx context.Context, client *http.Client, url string) bool {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
+
+type sseDownloadPayload struct {
+	Progress int    `json:"progress"`
+	Message  string `json:"message"`
+}
+
+func writeSSEDownload(w http.ResponseWriter, flusher http.Flusher, progress int, msg string) {
+	payload, err := json.Marshal(sseDownloadPayload{Progress: progress, Message: msg})
+	if err != nil {
+		return
+	}
+	fmt.Fprintf(w, "data: %s\n\n", payload)
+	flusher.Flush()
 }
 
 type sseProgress struct {
@@ -168,4 +264,3 @@ func writeSSEProgress(w http.ResponseWriter, flusher http.Flusher, msg string) {
 func writeSSEError(w http.ResponseWriter, flusher http.Flusher, msg string) {
 	writeSSEProgress(w, flusher, msg)
 }
-

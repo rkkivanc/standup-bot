@@ -1,40 +1,44 @@
 services:
-  # 1. Go Backend Servisi
-  backend:
-    build:
-      context: ./backend # Go projenin bulunduğu klasörün adı
-      dockerfile: Dockerfile
-    container_name: go_backend
-    restart: always
-    ports:
-      - "8080:8080" # Go uygulamasının çalıştığı port (kendi portuna göre değiştirebilirsin)
-    environment:
-      PORT: 8080
-
-  # 2. Next.js Frontend Servisi (Opsiyonel)
-  frontend:
-    build:
-      context: ./frontend # Next.js projenin bulunduğu klasörün adı
-      dockerfile: Dockerfile
-    container_name: next_frontend
-    restart: always
-    ports:
-      - "3000:3000" # Next.js'in varsayılan portu
-    environment:
-      NEXT_PUBLIC_API_URL: http://backend:8080 # Frontend'in Backend'e istek atacağı adres
-    depends_on:
-      - backend # Önce backend başlasın, sonra frontend
-
-  # 3. MLC LLM Servisi
-  mlc-llm:
-    image: ghcr.io/mlc-ai/mlc-llm
-    container_name: mlc_llm
-    profiles:
-      - mlc
+  # 1. Ollama Servisi
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
     restart: unless-stopped
     ports:
       - "11434:11434"
     volumes:
-      - ./models:/root/.ollama # Modeller için yerel klasör, gerekirse ./models klasörünü oluştur
+      - ollama_data:/root/.ollama
+    environment:
+      OLLAMA_HOST: "0.0.0.0:11434"
 
-# docker-compose up --build ile tüm servisler başlar.
+  # 2. Go Backend Servisi
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: go_backend
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      OLLAMA_HOST: http://ollama:11434
+    depends_on:
+      - ollama
+
+  # 3. Next.js Frontend Servisi
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: next_frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://backend:8080
+    depends_on:
+      - backend
+
+volumes:
+  ollama_data:

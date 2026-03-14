@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 )
@@ -43,23 +44,28 @@ func GetActiveLLMEndpoint() string {
 	return activeLLMEndpoint
 }
 
+// OllamaHost returns the Ollama base URL. Inside Docker this is
+// http://ollama:11434 (set via OLLAMA_HOST env var); outside Docker
+// it falls back to http://localhost:11434.
+func OllamaHost() string {
+	if h := os.Getenv("OLLAMA_HOST"); h != "" {
+		return h
+	}
+	return "http://localhost:11434"
+}
+
 // DiscoverLLMProviders probes a fixed set of known local AI endpoints concurrently
 // and returns their status. Each probe has an 800ms timeout.
 func DiscoverLLMProviders(ctx context.Context) []LLMProvider {
+	oHost := OllamaHost()
+
 	providers := []LLMProvider{
 		{
-			Name:        "mlc-llm",
-			Endpoint:    "http://localhost:11434",
+			Name:        "Ollama",
+			Endpoint:    oHost,
 			Status:      statusNotFound,
 			Models:      []string{},
 			Recommended: true,
-		},
-		{
-			Name:        "Ollama",
-			Endpoint:    "http://localhost:11434",
-			Status:      statusNotFound,
-			Models:      []string{},
-			Recommended: false,
 		},
 		{
 			Name:        "LM Studio",
@@ -84,10 +90,9 @@ func DiscoverLLMProviders(ctx context.Context) []LLMProvider {
 	}
 
 	probes := []probeConfig{
-		{index: 0, url: "http://localhost:11434/v1/models", kind: "openai"},
-		{index: 1, url: "http://localhost:11434/api/tags", kind: "ollama"},
-		{index: 2, url: "http://localhost:1234/v1/models", kind: "openai"},
-		{index: 3, url: "http://localhost:8081/v1/models", kind: "openai"},
+		{index: 0, url: oHost + "/api/tags", kind: "ollama"},
+		{index: 1, url: "http://localhost:1234/v1/models", kind: "openai"},
+		{index: 2, url: "http://localhost:8081/v1/models", kind: "openai"},
 	}
 
 	var wg sync.WaitGroup
@@ -146,12 +151,6 @@ func DiscoverLLMProviders(ctx context.Context) []LLMProvider {
 
 	wg.Wait()
 
-	// If mlc-llm is running but reported no models, fall back to the default model name
-	// used elsewhere in the application for better UX.
-	if providers[0].Status == statusRunning && len(providers[0].Models) == 0 {
-		providers[0].Models = []string{mlcModel}
-	}
-
 	return providers
 }
 
@@ -168,4 +167,3 @@ type ollamaTagsResponse struct {
 		Name string `json:"name"`
 	} `json:"models"`
 }
-

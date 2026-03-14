@@ -3,7 +3,8 @@
 import { useCallback, useMemo, useState } from "react";
 import LocalAISelector from "../components/LocalAISelector";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
 type StandupSection = string[];
 

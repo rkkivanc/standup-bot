@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
 type ProviderStatus = "running" | "not_found";
 

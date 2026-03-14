@@ -11,11 +11,11 @@ import (
 
 func main() {
 	mux := http.NewServeMux()
-	routes.RegisterRoutes(mux)
+	handler := routes.RegisterRoutes(mux)
 
 	server := &http.Server{
 		Addr:              ":8080",
-		Handler:           mux,
+		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

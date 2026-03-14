@@ -26,6 +26,7 @@ services:
       - "8080:8080" # Go uygulamasının çalıştığı port (kendi portuna göre değiştirebilirsin)
     environment:
       # Go'nun veritabanına bağlanması için gereken adres ('db' ismi yukarıdaki servis adından gelir)
+      PORT: 8080
       DATABASE_URL: postgres://myuser:mypassword@db:5432/mydatabase?sslmode=disable
     depends_on:
       - db # Önce veritabanı başlasın, sonra Go başlasın
@@ -40,9 +41,19 @@ services:
     ports:
       - "3000:3000" # Next.js'in varsayılan portu
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8080 # Frontend'in Backend'e istek atacağı adres
+      NEXT_PUBLIC_API_URL: http://backend:8080 # Frontend'in Backend'e istek atacağı adres
     depends_on:
       - backend # Önce backend başlasın, sonra frontend
+
+  # 4. MLC LLM Servisi
+  mlc-llm:
+    image: ghcr.io/mlc-ai/mlc-llm
+    container_name: mlc_llm
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./models:/root/.ollama # Modeller için yerel klasör, gerekirse ./models klasörünü oluştur
 
 volumes:
   pgdata:

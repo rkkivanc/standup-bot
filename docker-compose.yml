@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # 1. Veritabanı Servisi (PostgreSQL)
   db:
@@ -49,6 +47,8 @@ services:
   mlc-llm:
     image: ghcr.io/mlc-ai/mlc-llm
     container_name: mlc_llm
+    profiles:
+      - mlc
     restart: unless-stopped
     ports:
       - "11434:11434"

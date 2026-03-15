@@ -1,0 +1,19 @@
+---
+description: Backend conventions for Go HTTP API and local LLM flows
+globs: backend/**/*.go
+alwaysApply: false
+---
+
+# Backend Rules (Go net/http, no framework)
+
+- Keep backend code idiomatic Go and maintain separation across `internal/controllers`, `internal/services`, and `internal/routes`.
+- Preserve the existing API surface unless a task explicitly requires contract changes:
+  - `POST /api/commits`
+  - `POST /api/standup`
+  - `GET /api/llm/providers`
+  - `POST /api/llm/connect`
+  - `POST /api/llm/download`
+  - `POST /api/chat`
+- Return structured JSON error responses with meaningful HTTP status codes.
+- Preserve streaming behavior for `POST /api/llm/download` and `POST /api/chat`.
+- Keep runtime configuration env-driven (`PORT`, `OLLAMA_HOST`) and consistent with `docker-compose.yml`.

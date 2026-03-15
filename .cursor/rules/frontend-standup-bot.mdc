@@ -1,0 +1,14 @@
+---
+description: Frontend conventions for standup bot UI and API integration
+globs: frontend/**/*
+alwaysApply: false
+---
+
+# Frontend Rules (Next.js 16 + React 19 + Tailwind 4)
+
+- Use App Router conventions in `frontend/app` and keep route files component-focused.
+- Prefer strict TypeScript typing for API payloads, local UI state, and streamed event parsing.
+- Use `process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"` as the backend base URL.
+- Keep the current UX contract intact: standup generation, copy actions, local model selection, and streaming chat updates.
+- Use Tailwind utility classes and follow styling patterns from `frontend/app/page.tsx` and `frontend/components/LocalAISelector.tsx`.
+- When changing frontend API calls, keep them aligned with backend routes and response shapes.

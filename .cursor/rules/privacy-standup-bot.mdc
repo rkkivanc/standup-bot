@@ -1,0 +1,14 @@
+---
+description: Privacy-first constraints and data-handling guardrails
+alwaysApply: true
+---
+
+# Privacy and Data Handling Rules
+
+- Treat this project as local-first and privacy-first by default.
+- Do not introduce cloud LLM providers or external AI API dependencies unless explicitly requested.
+- Keep GitHub tokens transient (in-memory per request), never persisted or logged.
+- Avoid persisting commit data, standup content, or chat content unless explicitly requested.
+- Do not assume a database layer; this project currently operates without persistent DB storage.
+- Avoid adding telemetry, analytics, or background data collection by default.
+- If a change impacts runtime config, call out required updates to `docker-compose.yml` and environment variables.
